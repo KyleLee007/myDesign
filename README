@@ -1,0 +1,27 @@
+------------------------README------------------------
+PORJECT-NAME: linux high-concurrency server(Based on epoll).
+AUTHOR:  Kyle Lee.
+DATE  :  2014.3.9
+NOTES :
+    This is my graduation thesis source code project. The full source code files and build file are push on github.This project shows a sample usage of linux muti-thread and epoll network programming.
+    You can clone this repository from github and edit them by your mood. But the source code must not be used for any commercial purposes whether individuals or organziagions.
+    If you have any questions, please mail telling to me(likai503819723@gmail.com).
+FILE-LISTS:
+    |
+    +--build
+    |   |
+    |   +--makefile  : buld the whole project.
+    |
+    +--headers : the custom header files the project depends on.
+    |
+    +--source: the implement source files.
+    
+
+BUILD-AND-RUN:
+    1. use 'cd' command move to the 'build' directory.
+    2. Type 'make' command to build the whole project.
+    3. After that, you can find there is a executable binary file which called 'server.bin' in current directory, run it: ./server.bin .
+    4. Now the server is running.
+
+    Good luck!
+    
