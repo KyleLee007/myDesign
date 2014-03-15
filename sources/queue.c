@@ -3,50 +3,61 @@
 *       author: KyleLee
 *       date:   2014.3.5.
 */
-#include "../headers/queue.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "../headers/queue.h"
 
-int initQueue(TaskQueue *pQue)
+ BOOL initQueue(TaskQueue *pQue)
 {
     pQue->front = pQue->rear = (QNodePtr)malloc(sizeof(QNode)); //this is a header node.
     if (! pQue->front)
     {
         printf("Err: malloc Error. Location:queue.c-initQueue.\n");
-        return NG;
+        return FALSE;
     }
     pQue->length= 0;
-    return OK;
+    return TRUE;
 }
 
-int enQueue(TaskQueue *pQue, int elem)
+ BOOL enQueue(TaskQueue *pQue, int elem, pthread_mutex_t *pmutex)
 {
     QNodePtr newNode = (QNodePtr)malloc(sizeof(QNode));
     if (!newNode)
     {
         printf("Err: malloc Error. Location:queue.c-enQueue.\n");
-        return NG;
+        return FALSE;
     }
     newNode->fdNo = elem;
     newNode->next = NULL;
 
+	/*lock the task-queue.*/
+	pthread_mutex_lock(pmutex);
+
     pQue->rear->next = newNode;
     pQue->rear = newNode;
     pQue->length++;
-    return OK;
+
+	/*unlock the queue.*/
+	pthread_mutex_unlock(pmutex);
+
+    return TRUE;
 }
 
-int deQueue(TaskQueue *pQue, int *pElem)
+ BOOL deQueue(TaskQueue *pQue, int *pElem, pthread_mutex_t *pmutex)
 {
     QNodePtr delNode;
-    if (OK == isEmpty(*pQue)) // If queue is empty.
+    if (TRUE == isEmpty(*pQue)) // If queue is empty.
     {
         printf("Err: Empty Queue Error. Location:queue.c-deQueue.\n");
-        return NG;
+        return FALSE;
     }
 
     delNode = pQue->front->next;
     *pElem = delNode->fdNo;
+
+	/*To avoid other threads use queue in the
+	  same time. lock the task-queue.*/
+	pthread_mutex_lock(pmutex);
 
     pQue->front->next = delNode->next;
     if (pQue->rear == delNode)
@@ -54,15 +65,17 @@ int deQueue(TaskQueue *pQue, int *pElem)
         pQue->rear = pQue->front;
     }
     pQue->length--;
+	/*unlock the queue.*/
+	pthread_mutex_unlock(pmutex);
 
     free(delNode);
-    return OK;
+    return TRUE;
 }
 
-int isEmpty(TaskQueue que)
+ BOOL isEmpty(TaskQueue que)
 {
-    int ret = (que.front == que.rear  &&
+     BOOL ret = (que.front == que.rear  &&
                        0 == que.length
-                )   ? OK : NG ;
+                )   ? TRUE : FALSE ;
     return ret;
 }

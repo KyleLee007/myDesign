@@ -3,27 +3,29 @@
 *	author: KyleLee.
 *	date: 2014.3.5.
 */
-
+/**********enum type define**********************/
+typedef enum BOOL{
+	FALSE,
+		TRUE
+} BOOL;
 /***********data structure daclaration*************/
 /*single node define*/
+#include <pthread.h>
+
 typedef struct QNode{
 	int fdNo;
 	struct QNode *next;
 }QNode, *QNodePtr;
 
 /*Queue collection.*/
-typedef struct {
+typedef struct TaskQueue{
 	QNodePtr front; /*Queue's header.*/
 	QNodePtr rear; /*Queue's tail.*/
 	int length;     /*Queue's length.*/
 }TaskQueue;
 
-/**********macro define**********************/
-#define NG -1
-#define OK 0
-
 /************function declaration***************/
-int initQueue(TaskQueue *pQue);/*initial Queue.*/
-int enQueue(TaskQueue *pQue, int elem);/*enter Queue.*/
-int deQueue(TaskQueue *pQue, int* pElem);/*depart Queue.*/
-int isEmpty(TaskQueue pQue); /*is the Queue not empty?*/
+ BOOL initQueue(TaskQueue *pQue);/*initial Queue.*/
+ BOOL enQueue(TaskQueue *pQue, int elem, pthread_mutex_t *mutex);/*enter Queue.*/
+ BOOL deQueue(TaskQueue *pQue, int* pElem, pthread_mutex_t *mutex);/*depart Queue.*/
+ BOOL isEmpty(TaskQueue pQue); /*whether the Queue is empty.*/

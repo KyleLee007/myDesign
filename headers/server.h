@@ -3,43 +3,55 @@
 *				--likai, 2014.2.27
 *
 */
+
 /*--------------header file(s) included----------------*/
+#ifndef _SERVER_H__
+#define _SERVER_H__
+
 #include"queue.h"
-#include<pthread.h>
+/*#include<pthread.h>*/
+
+
 /*-------------------macro and consts------------------*/
 /*const char fileName[] ="./ServerRec.log";*/
 #define  MAX_QUEUE 1024
+#define MAX_EVENTS 10000
+#define  MAX_EPOLL_SIZE 10000
+#define MAX_LOGBUFF_SIZE 2048
+#define THREAD_NUM 2
+#define  BUFFSIZE 1024
 
-#ifndef _SERVER_H__
-#define _SERVER_H__
-/*-----------------global variables--------------------*/
-/*read threads array*/
-pthread_t glbReadThread[2];
-/*write threads array*/
-pthread_t glbWriteThread[2];
-/*log record thread*/
-pthread_t glbLogRecThread;
-/*read mutex.*/
-pthread_mutex_t glbRMutex;
-/*write mutex.*/
-pthread_mutex_t glbWMutex;
-/*record current connect-num*/
-long glbNo;
-/*log buffer*/
-char logBuff[512];
+/*--------------Enum type declaration----------------*/
+typedef enum ETYPE{
+	INFO,
+	WARN,
+	ERROR
+}ETYPE;
+
+typedef struct TaskParams{
+	/*task queue.*/
+	TaskQueue taskQue;
+	/*threads' condition var.*/
+	 pthread_cond_t  cond;
+	 /*mutex.*/
+	 pthread_mutex_t  mutex;
+}TaskParams;
+
 /*------------------function declaration---------------*/
 /*read thread function*/
-int readTaskThread();
+void* rTaskThreadFunc(void *args);
 /*write thread function*/
-int writeTaskThread();
+void* wTaskThreadFunc(void *args);
 /*log record thread function*/
-int logRecThread();
+void* logRecThread();
 /*thread create function*/
-int createThread(pthread_t px);
+ BOOL createThread(pthread_t *p, int size,  void* (*fp)(void* ), void *args);
 /*set comm-type to non-blocking*/
-int setSocketNoBlocking(int fd);
+ BOOL setSocketNoBlocking(int fd);
 /*initial server config params*/
-int initServer(int* socket, int port);
+ BOOL initServer(int *sock, TaskQueue *rtq, TaskQueue *wtq, int port);
 /*display system fatal error*/
-void sysFatalErr(const char* message, int ret);
-#endif
+void sysEventLog( ETYPE e, const char* fName, const char* msgDesc, int errCode);
+/*server main process function.*/
+ BOOL serverProcess(int port);
+ #endif
