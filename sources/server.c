@@ -18,9 +18,9 @@
 #include <arpa/inet.h>
 
 #include"../headers/server.h"
-
+#include"../headers/queue.h"
 /*-----------for debug------------------------------------------*/
- /*#include"headers/debug.h"*/
+/*#include"headers/debug.h"*/
 
 /*-------------------macro and consts------------------*/
 /*const char fileName[] ="./ServerRec.log";*/
@@ -48,18 +48,15 @@ void* rTaskThreadFunc(void *args)
 	int curFD = -1;
 	char recBuff[BUFFSIZE]={0};
 	int ret=-1;
-	 BOOL readAgain = TRUE;
+	 BOOL readAgain;
 	TaskParams *rTP = (TaskParams*)args;
 	/*Infinite loop.*/
 	while(TRUE)
 	{
-		/*If the queue is empty, then wait.*/
-		while (TRUE == isEmpty(rTP->taskQue))
-		{
-			pthread_cond_wait(&(rTP->cond),&(rTP->mutex));
-		}
-		/*if the queue is not empty, dequeue the first elem.*/
-		if (FALSE == deQueue( &(rTP->taskQue), &curFD, &( rTP->mutex)) )
+		readAgain = TRUE;
+		/*dequeue the first elem.*/
+		/*in deQueue() we'll judge if the quque is empty then wait.*/
+		if ( !deQueue( rTP, &curFD) )
 		{
 			sysEventLog(ERROR, "readTaskThread()", "deQueue() returned error.", ret);
 			break;
@@ -71,9 +68,8 @@ void* rTaskThreadFunc(void *args)
 			ret = recv(curFD, recBuff, BUFFSIZE, 0);
 			if (ret<0)
 			{
-				/* Because of non-blocking mode, if errno is 
-				* EAGAIN, it means that there is no data in data-buffer.
-				* So we break.*/
+				/* Because of non-blocking mode, if errno is EAGAIN, it
+				*means that there is no data in data-buffer.So we break.*/
 				if (EAGAIN == errno)
 				{
 					sysEventLog(WARN, "readTaskThread()", "errno is EAGAIN.", errno);
@@ -101,6 +97,7 @@ void* rTaskThreadFunc(void *args)
 			*	such as a example:
 			*				printf("%d send:%s.\n",curFD, recBuff);
 			*/
+			printf("\n+=+=+=+=+=+DBG(%lu):I receive %d send:%s.\n\n", pthread_self() , curFD, recBuff);
 			close(curFD);
 		}
 	}
@@ -119,13 +116,9 @@ void* wTaskThreadFunc(void *args)
 	/*Infinite loop.*/
 	while (TRUE)
 	{
-		/*If the queue is empty, then wait.*/
-		while(TRUE == isEmpty(wTP->taskQue))
-		{
-			pthread_cond_wait(&(wTP->cond), &(wTP->mutex));
-		}
-		/*if the queue is not empty, dequeue the first elem.*/
-		if (FALSE == deQueue(&(wTP->taskQue), &curFD, &(wTP->mutex)) )
+		/*dequeue the first elem.*/
+		/*in deQueue() we'll judge if the quque is empty then wait.*/
+		if ( !deQueue(wTP, &curFD) )
 		{
 			sysEventLog(ERROR, "writeTaskThread()", "deQueue() returned error.", ret);
 			break;
@@ -140,8 +133,7 @@ void* wTaskThreadFunc(void *args)
 		  */
 		sprintf(tmpBuff,htmlContent,glbNo);
 		sprintf(sendBuff, "HTTP/1.0 200 OK\r\nContent-type:text/html\r\n%s",tmpBuff);
-		ret = send(curFD, sendBuff, strlen(sendBuff)+1, 0);
-		if (ret < 0)
+		if ((ret=send(curFD, sendBuff, strlen(sendBuff)+1, 0)) < 0)
 		{
 			sysEventLog(WARN, "writeTaskThread()", "send() returned error.", ret);
 		}
@@ -163,11 +155,24 @@ void* logRecThread()
 {
 	int i=0;
 	int ret=-1;
+	/*tmp log buffer.*/
+	char buf[128]={0};
+	/*func is symbol of function name:
+			U : unknown function.
+			R: read task function.
+			W:write task function.
+	*/
+	char func='U';
+
 	for(; i<size; i++)
 	{
-		if((ret = pthread_create(p+i, NULL, fp, args)))
+		if( (ret=pthread_create(p+i, NULL, fp, args)) )
 		{
-			sysEventLog(ERROR, "createThread()", "pthread_create() returnd error.", ret);
+			/*Judge whether the function is read or write.*/
+			func = (rTaskThreadFunc == *fp ? 'R' : 'W');
+			/*prepare the error message.*/
+			sprintf(buf, "error occured when create %c[%d] thread.",func, i);
+			sysEventLog(ERROR, "createThread", buf, ret);
 			 return FALSE;
 		}
 	}
@@ -199,7 +204,7 @@ void* logRecThread()
 *		TRUE : normal return.
 *		FALSE: error return.
 *==========================*/
- BOOL  initServer(int *sock, TaskQueue *rtq, TaskQueue *wtq, int port)
+ BOOL  initServer(int *sock, /*TaskQueue *rtq, TaskQueue *wtq,*/ int port)
 {
 	/*create a net tcp socket.*/
 	struct sockaddr_in addr;
@@ -225,7 +230,7 @@ void* logRecThread()
 	}
 
 	/*set socket noblocking.*/
-	if ((ret=setSocketNoBlocking(*sock)) == FALSE)
+	if (!(ret=setSocketNoBlocking(*sock)))
 	{
 		sysEventLog(ERROR, "initServer()", "setSocketNoBlocking() return error.", ret);
 		return FALSE;
@@ -238,7 +243,11 @@ void* logRecThread()
 		return FALSE;
 	}
 	/*Accomplish socket initialize, now begin to initial task queue.*/
-	if (initQueue(rtq) != TRUE)
+  /*  WE MUST INITIAL rtq and wtq before create read and write task threads.
+	*  or isEmpty(rtq) and isEmpty(wtq) will return FALSE at function rTaskThreadFunc(line57)
+	* and function wTaskThreadFunc(line123), so ERROR occurred.
+	*/
+/*	if (initQueue(rtq) != TRUE)
 	{
 		sysEventLog(ERROR, "initServer()", "Init read-task-queue.", FALSE);
 		return FALSE;
@@ -247,7 +256,7 @@ void* logRecThread()
 	{
 		sysEventLog(ERROR, "initServer:initQueue()", "Init write-task-queue.", FALSE);
 		return FALSE;
-	}
+	}*/
 	return TRUE;
 }
 
@@ -260,16 +269,22 @@ void sysEventLog( ETYPE e, const char* fName, const char* msgDesc, int errCode)
 	//printf(asctime(localtime(&lt)));/*tranfer to tm*/
 	ctime(&lt); /*english format output*/
 	
-	switch(e)
+/*	switch(e)
 	{
 	case INFO:break;
 	case WARN: break;
 	case  ERROR: break;
 	}
-	printf("---%s\n",asctime(localtime(&lt))); /*tranfer to tm*/
-	printf("---ErrMsg:%s.%s\n", fName,  msgDesc);
-	printf("---ErrCode:%d\n", errCode);
-	printf("-------------------\n\n");
+*/
+	printf("========================\n"
+				"---TIME:%s"
+				"---ERRMSG:%s.%s\n"
+				"---ERRCODE:%d\n"
+				"-------------------------------------------\n\n",
+				asctime(localtime(&lt)),
+				fName, msgDesc,
+				errCode
+		);
 }
 
 /*server main process.*/
@@ -287,11 +302,11 @@ BOOL serverProcess(int port)
 	/*other vars*/
 	char *str=NULL;
 	int clientSocket;
-	int ready =-1;
+	int evCnt =-1;
 	int i=0;
 	int ret = -1;
 	int listenSocket = 0;
-   // int client = 0;
+   /* int client = 0;*/
 	socklen_t addrLen = sizeof(struct sockaddr_in);
 	/*read threads array*/
 	pthread_t rTaskThreadIDs[THREAD_NUM];
@@ -304,23 +319,31 @@ BOOL serverProcess(int port)
 	TaskParams wTP;
 
 	/*log record thread*/
-	pthread_t logRecThreadID;
-/*----------------------------params initialize.--------------------------------------------------------*/
-	/*Init r&w thread mutexs with default attribute.*/
-	pthread_mutex_init(&(rTP.mutex), NULL);
-	pthread_mutex_init(&(wTP.mutex), NULL);
+/*	pthread_t logRecThreadID;*/
 
-	/*Init r&w cond-vars with default attribute.*/
-	pthread_cond_init(&(rTP.cond),  NULL);
-	pthread_cond_init(&(wTP.cond), NULL);
+/*----------------------------params initialize.--------------------------------------------------------*/
+	/*init r&w's queue.*/
+	if ( (str=initQueue(&(rTP))) ||
+		  (str=initQueue(&(wTP)))
+	   )
+	{
+		sysEventLog(ERROR, "serverProcess()", str, FALSE);
+	}
 
 	/*Create r&w task thread.*/
-	createThread(rTaskThreadIDs, THREAD_NUM, rTaskThreadFunc, &(rTP));
-	createThread(wTaskThreadIDs, THREAD_NUM, wTaskThreadFunc, &(wTP));
+	if ( ! createThread(rTaskThreadIDs, THREAD_NUM, rTaskThreadFunc, &(rTP)) ||
+		 ! createThread(wTaskThreadIDs, THREAD_NUM, wTaskThreadFunc, &(wTP))
+	   )
+	{
+		/*sysEventLog(ERROR, "serverProcess()", " create task thread error.", FALSE);*/
+		/*ERROR/WARN log has been recorded in initServer().*/
+		return FALSE;
+	}	
 
     /* Initialize the server */
-    if (initServer(&listenSocket, &(rTP.taskQue), &(wTP.taskQue), port))
+    if ( ! initServer(&listenSocket, /*&(rTP.taskQue), &(wTP.taskQue),*/ port))
     {
+		/*ERROR/WARN log has been recorded in initServer().*/
 		return FALSE;
     }
 
@@ -331,67 +354,66 @@ BOOL serverProcess(int port)
 		return FALSE;
 	}
 	epollFD = ret;
-	tmpEv.events = EPOLLIN;
+	tmpEv.events = EPOLLIN|EPOLLET;
     tmpEv.data.fd = listenSocket;
 
 	if ((ret=epoll_ctl(epollFD, EPOLL_CTL_ADD, listenSocket, &tmpEv)) < 0)
     {
-        sysEventLog(ERROR, "serverProcess()", "epoll_ctl() returned error", ret);
+        sysEventLog(ERROR, "serverProcess()", "epoll_ctl() returned error.", ret);
 		return FALSE;
     }
 /*---------------------------server working loop.----------------------------------------------------------*/
 	/*Infinite loop.*/
-	while (1)
+	while (TRUE)
 	{
 		/*Wait for epoll to return the events.*/
-		ready = epoll_wait(epollFD, events, MAX_EVENTS, -1);
-		if (ready<0)
+		if ((evCnt = epoll_wait(epollFD, events, MAX_EVENTS, -1))<0)
 		{
-			sysEventLog(ERROR, "serverProcess()", "epoll_wait() returned error.", ready);
+			sysEventLog(ERROR, "serverProcess()", "epoll_wait() returned error.", evCnt);
 			return FALSE;
 		}
 
 		/*loop to deal these events.*/
-		for (i=0; i<ready; i++)
+		for (i=0; i<evCnt; i++)
 		{
 			/*If it is listen fd, it means a new connection join in.*/
 			if (events[i].data.fd == listenSocket)  
 			{
 				/*Accept the new connection.*/
-				clientSocket = accept(listenSocket, (struct sockaddr*)&clientAddr, &addrLen);
-				if (clientSocket<0)
+				if ((clientSocket=accept(listenSocket, (struct sockaddr*)&clientAddr, &addrLen))<0)
 				{
 					sysEventLog(ERROR, "serverProcess()", "accept() returned error.", clientSocket);
 					return FALSE;
 				}
 				/*Same as listenSocket, set no-blocking mode.*/
-				ret = setSocketNoBlocking(clientSocket);
-				if (FALSE == ret)
+				if ( ! (ret=setSocketNoBlocking(clientSocket)))
 				{
 					sysEventLog(ERROR, "serverProcess()", "setSocketNoBlocking() returned error.", ret);
 					return FALSE;
 				}
-				/***for debug.***/
+				/**---------------------*for debug.**-----------------------*/
 				str = inet_ntoa(clientAddr.sin_addr);
 				printf("\n\nclient addr is %s \n\n\n", str);
-				/*****end******/
+				/**----------------------**end**---------------------------**/
 				/*add the new-socket in tmp struct variable.*/
 				tmpEv.data.fd = clientSocket;
 				/*register the events for new-socket.*/
 				tmpEv.events = EPOLLIN|EPOLLOUT;
 				/*add tmpEV in events[] array collection.*/
-				epoll_ctl(epollFD, EPOLL_CTL_ADD, clientSocket, &tmpEv);
+				if ((ret= epoll_ctl(epollFD, EPOLL_CTL_ADD, clientSocket, &tmpEv))<0)
+				{
+					sysEventLog(ERROR, "serverProcess()", "epoll_ctl() returned error.", ret);
+				}
 				/*done.*/
 			} 
 			/*if the existing fd has event, we must judge it is legal or not.*/
-			else if (events[i].data.fd >0 )
+			else if (events[i].data.fd >0)
 			{
 				/*if the event is EPOLLIN, it means the fd is readable.*/
 				if (events[i].events & EPOLLIN)
 				{
 					/*enter the read-task-queue.*/
-					ret = enQueue(&(rTP.taskQue), events[i].data.fd, &(rTP.mutex));
-					if (FALSE == ret)
+					if ( ! (ret=enQueue(&rTP, events[i].data.fd)) )
 					{
 						sysEventLog(ERROR, "serverProcess()", "enQueue(rTaskQueue) returned error.",ret);
 						return FALSE;
@@ -400,13 +422,13 @@ BOOL serverProcess(int port)
 				/*otherwise if EPOLLOUT, this fd can be written.*/
 				else if(events[i].events & EPOLLOUT)
 				{
+                printf("I got EOPLLOUT! rTP len=%d, wTP len=%d\n", rTP.taskQue.length, wTP.taskQue.length);
 					/*enter the write-task-queue.*/
-					ret = enQueue(&(wTP.taskQue), events[i].data.fd, &(wTP.mutex));
-					if (FALSE == ret)
+		/*			if ( ! (ret=enQueue(&wTP, events[i].data.fd)) )
 					{
 						sysEventLog(ERROR, "serverProcess()", "enQueue(wTaskQueue) returned error.",ret);
 						return FALSE;
-					}
+					}*/
 				}
 				/*else, the event is other(EPOLLERR,EPOLLHUP...).*/
 				else

@@ -28,15 +28,6 @@ typedef enum ETYPE{
 	ERROR
 }ETYPE;
 
-typedef struct TaskParams{
-	/*task queue.*/
-	TaskQueue taskQue;
-	/*threads' condition var.*/
-	 pthread_cond_t  cond;
-	 /*mutex.*/
-	 pthread_mutex_t  mutex;
-}TaskParams;
-
 /*------------------function declaration---------------*/
 /*read thread function*/
 void* rTaskThreadFunc(void *args);
@@ -49,7 +40,7 @@ void* logRecThread();
 /*set comm-type to non-blocking*/
  BOOL setSocketNoBlocking(int fd);
 /*initial server config params*/
- BOOL initServer(int *sock, TaskQueue *rtq, TaskQueue *wtq, int port);
+ BOOL initServer(int *sock, /*TaskQueue *rtq, TaskQueue *wtq,*/ int port);
 /*display system fatal error*/
 void sysEventLog( ETYPE e, const char* fName, const char* msgDesc, int errCode);
 /*server main process function.*/

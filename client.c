@@ -1,4 +1,4 @@
-#include "headers/h.h"
+#include "h.h"
 int main()
 {
     int fd;
@@ -14,6 +14,6 @@ int main()
         write(fd,"nihao",sizeof("nihao"));
        // write(fd,"wohao",sizeof("wohao"));
     }
-    sleep(3);
+    //sleep(3);
     close(fd);
 }

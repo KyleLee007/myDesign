@@ -7,57 +7,83 @@
 #include <stdlib.h>
 #include "../headers/queue.h"
 
- BOOL initQueue(TaskQueue *pQue)
+ char* initQueue(TaskParams *tp)
 {
-    pQue->front = pQue->rear = (QNodePtr)malloc(sizeof(QNode)); //this is a header node.
+	 TaskQueue *pQue = &(tp->taskQue);
+	 pthread_mutex_t *pmutex = &(tp->mutex);
+	 pthread_cond_t * pcond = &(tp->cond);
+	/*--------------------initial Queue.-----------------*/
+	 /*this is a header node.*/
+    pQue->front = pQue->rear = (QNodePtr)malloc(sizeof(QNode));
     if (! pQue->front)
     {
-        printf("Err: malloc Error. Location:queue.c-initQueue.\n");
-        return FALSE;
+        return "memory alloc error.";
     }
     pQue->length= 0;
-    return TRUE;
+/*-------------------initial mutex.----------------------*/
+	/*Init r&w thread mutexs with default attribute.*/
+	if ( pthread_mutex_init(pmutex, NULL) )
+	{
+		 return "taskQue initial error.";
+	}
+/*------------------initial cond var.----------------------*/	
+	/*Init r&w cond-vars with default attribute.*/
+	if ( pthread_cond_init(pcond,  NULL) )
+	{
+		return "cond vars initial error.";
+	}
+    return NULL;
 }
 
- BOOL enQueue(TaskQueue *pQue, int elem, pthread_mutex_t *pmutex)
+ BOOL enQueue(TaskParams *tp, int elem)
 {
-    QNodePtr newNode = (QNodePtr)malloc(sizeof(QNode));
-    if (!newNode)
-    {
+	 TaskQueue *pQue = &(tp->taskQue);
+	 pthread_mutex_t *pmutex = &(tp->mutex);
+	 pthread_cond_t *pcond = &(tp->cond);
+
+	 QNodePtr newNode = (QNodePtr)malloc(sizeof(QNode));
+     if (!newNode)
+	 {
         printf("Err: malloc Error. Location:queue.c-enQueue.\n");
         return FALSE;
-    }
-    newNode->fdNo = elem;
-    newNode->next = NULL;
+	 }
 
 	/*lock the task-queue.*/
 	pthread_mutex_lock(pmutex);
 
-    pQue->rear->next = newNode;
+    newNode->fdNo = elem;
+    newNode->next = NULL;
+    
+	pQue->rear->next = newNode;
     pQue->rear = newNode;
     pQue->length++;
 
 	/*unlock the queue.*/
 	pthread_mutex_unlock(pmutex);
-
+	/*wake a thread which is waitting forcond up. */
+	pthread_cond_signal(pcond);
     return TRUE;
 }
 
- BOOL deQueue(TaskQueue *pQue, int *pElem, pthread_mutex_t *pmutex)
+ BOOL deQueue(TaskParams *tp, int *pElem)
 {
-    QNodePtr delNode;
-    if (TRUE == isEmpty(*pQue)) // If queue is empty.
-    {
-        printf("Err: Empty Queue Error. Location:queue.c-deQueue.\n");
-        return FALSE;
-    }
+	 TaskQueue *pQue = &(tp->taskQue);
+	 pthread_mutex_t *pmutex = &(tp->mutex);
+	 pthread_cond_t *pcond = &(tp->cond);
 
-    delNode = pQue->front->next;
-    *pElem = delNode->fdNo;
+    QNodePtr delNode;
 
 	/*To avoid other threads use queue in the
 	  same time. lock the task-queue.*/
 	pthread_mutex_lock(pmutex);
+	/*If the queue is empty, then wait.*/
+	while (isEmpty(*pQue))
+	{
+		pthread_cond_wait(pcond, pmutex);
+	}
+	
+    delNode = pQue->front->next;
+    *pElem = delNode->fdNo;
 
     pQue->front->next = delNode->next;
     if (pQue->rear == delNode)

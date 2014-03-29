@@ -3,6 +3,8 @@
 *	author: KyleLee.
 *	date: 2014.3.5.
 */
+#ifndef _QUEUE_H__
+#define _QUEUE_H__
 /**********enum type define**********************/
 typedef enum BOOL{
 	FALSE,
@@ -24,8 +26,18 @@ typedef struct TaskQueue{
 	int length;     /*Queue's length.*/
 }TaskQueue;
 
+typedef struct TaskParams{
+	/*task queue.*/
+	TaskQueue taskQue;
+	/*threads' condition var.*/
+	pthread_cond_t  cond;
+	/*mutex.*/
+	pthread_mutex_t  mutex;
+}TaskParams;
+
 /************function declaration***************/
- BOOL initQueue(TaskQueue *pQue);/*initial Queue.*/
- BOOL enQueue(TaskQueue *pQue, int elem, pthread_mutex_t *mutex);/*enter Queue.*/
- BOOL deQueue(TaskQueue *pQue, int* pElem, pthread_mutex_t *mutex);/*depart Queue.*/
+ char* initQueue(TaskParams *tp);/*initial Queue.*/
+ BOOL enQueue(TaskParams *tp, int elem);/*enter Queue.*/
+ BOOL deQueue(TaskParams * tp, int* pElem);/*depart Queue.*/
  BOOL isEmpty(TaskQueue pQue); /*whether the Queue is empty.*/
+#endif
