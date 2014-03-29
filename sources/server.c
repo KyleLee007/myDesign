@@ -367,7 +367,7 @@ BOOL serverProcess(int port)
 	while (TRUE)
 	{
 		/*Wait for epoll to return the events.*/
-		if ((evCnt = epoll_wait(epollFD, events, MAX_EVENTS, -1))<0)
+		if ((evCnt = epoll_wait(epollFD, events, MAX_EVENTS, 1000))<0)
 		{
 			sysEventLog(ERROR, "serverProcess()", "epoll_wait() returned error.", evCnt);
 			return FALSE;
@@ -420,19 +420,21 @@ BOOL serverProcess(int port)
 					}
 				}
 				/*otherwise if EPOLLOUT, this fd can be written.*/
-				else if(events[i].events & EPOLLOUT)
+				else if(events[i].events & EPOLLIN)
 				{
                 printf("I got EOPLLOUT! rTP len=%d, wTP len=%d\n", rTP.taskQue.length, wTP.taskQue.length);
 					/*enter the write-task-queue.*/
-		/*			if ( ! (ret=enQueue(&wTP, events[i].data.fd)) )
+					if ( ! (ret=enQueue(&wTP, events[i].data.fd)) )
 					{
 						sysEventLog(ERROR, "serverProcess()", "enQueue(wTaskQueue) returned error.",ret);
 						return FALSE;
-					}*/
+					}
 				}
 				/*else, the event is other(EPOLLERR,EPOLLHUP...).*/
 				else
 				{
+                  //  exit(0);
+                  //  printf("in else.\n");
 					/*do nothing.*/
 				}
 			}

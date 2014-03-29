@@ -14,6 +14,6 @@ int main()
         write(fd,"nihao",sizeof("nihao"));
        // write(fd,"wohao",sizeof("wohao"));
     }
-    //sleep(3);
+    sleep(60);
     close(fd);
 }
